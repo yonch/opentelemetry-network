@@ -80,11 +80,18 @@ jobs:
             --workdir /root/out \
             $BENV_IMAGE \
             cpack -G 'RPM;DEB'
-      - name: Upload packages
+      - name: Upload packages to GitHub Action artifacts
         uses: actions/upload-artifact@v3
         with:
           name: packages
           path: |
+            out/opentelemetry-ebpf-*.rpm
+            out/opentelemetry-ebpf-*.deb
+      - name: Upload packages to Release
+        uses: softprops/action-gh-release@c9b46fe7aad9f02afd89b12450b780f52dacfb2d
+        if: ${{ startsWith(github.ref, 'refs/tags/') && !inputs.dry_run }}
+        with:
+          files: |
             out/opentelemetry-ebpf-*.rpm
             out/opentelemetry-ebpf-*.deb
       - name: Push to container registry
