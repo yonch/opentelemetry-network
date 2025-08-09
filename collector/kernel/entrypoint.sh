@@ -28,15 +28,13 @@ if ! mountpoint -q /sys; then
   mount -t sysfs none /sys || echo "Warning: Could not mount sysfs"
 fi
 
-cmd_args=()
-
 echo "launching kernel collector..."
 # on Debug (non-production) images, devs can run in local mode by setting
 # `EBPF_NET_RUN_LOCAL` to non-empty.
 if [[ -n "${EBPF_NET_RUN_LOCAL}" ]]; then
   # shellcheck disable=SC1091
+  # will define `local_cmd_args` variable
   source /srv/local.sh
-  cmd_args+=("${local_cmd_args[@]}")
 fi
 
 # to run the collector under gdb, set `EBPF_NET_RUN_UNDER_GDB` to the flavor of gdb
@@ -65,7 +63,7 @@ if [[ -n "${EBPF_NET_RUN_UNDER_GDB}" ]]; then
   done
 
   (set -x; exec "${EBPF_NET_RUN_UNDER_GDB}" -q "${GDB_ARGS[@]}" \
-    --args "${install_dir}/kernel-collector" "${cmd_args[@]}" "$@" \
+    --args "${install_dir}/kernel-collector" "${local_cmd_args[@]}" "$@" \
   )
 elif [[ -n "${EBPF_NET_RUN_UNDER_VALGRIND}" ]]; then
   # to run the collector under valgrind, set `EBPF_NET_RUN_UNDER_VALGRIND` to the options to pass to valgrind,
@@ -78,7 +76,7 @@ elif [[ -n "${EBPF_NET_RUN_UNDER_VALGRIND}" ]]; then
   apt install -y valgrind
 
   # shellcheck disable=SC2086
-  (set -x; exec /usr/bin/valgrind ${EBPF_NET_RUN_UNDER_VALGRIND} "${install_dir}/kernel-collector" "${cmd_args[@]}" "$@")
+  (set -x; exec /usr/bin/valgrind ${EBPF_NET_RUN_UNDER_VALGRIND} "${install_dir}/kernel-collector" "${local_cmd_args[@]}" "$@")
 else
-  (set -x; exec "${install_dir}/kernel-collector" "${cmd_args[@]}" "$@")
+  (set -x; exec "${install_dir}/kernel-collector" "${local_cmd_args[@]}" "$@")
 fi
