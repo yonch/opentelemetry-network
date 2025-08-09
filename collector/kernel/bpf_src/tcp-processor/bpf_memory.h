@@ -21,10 +21,7 @@ static __always_inline int string_starts_with(const char *s1, const size_t s1_le
   if (s2_len > 16)
     return 0; // help the verifier
 
-  char s1_local[16] = {};
-  size_t s1_local_len = bpf_probe_read_kernel_str(s1_local, sizeof(s1_local), s1);
-
-  if (s1_local_len < s2_len) {
+  if (s1_len < s2_len) {
     return 0;
   }
 
@@ -33,7 +30,7 @@ static __always_inline int string_starts_with(const char *s1, const size_t s1_le
       // s2 is shorter than 16 bytes, so we are done
       return 1;
     }
-    if (s2_local[i] != s1_local[i]) {
+    if (s2_local[i] != s1[i]) {
       return 0;
     }
   }
