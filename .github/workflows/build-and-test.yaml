@@ -89,6 +89,10 @@ jobs:
         docker run -d -p 5000:5000 --name registry docker.io/library/registry:2
         
         # Build reducer with registry access
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+        
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -152,6 +156,10 @@ jobs:
         docker run -d -p 5000:5000 --name registry docker.io/library/registry:2
         
         # Build kernel-collector with registry access
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+        
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -215,6 +223,10 @@ jobs:
         docker run -d -p 5000:5000 --name registry docker.io/library/registry:2
         
         # Build kernel-collector-test with registry access
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+        
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -271,6 +283,10 @@ jobs:
         echo "github.workspace = ${{ github.workspace }}"
         docker pull $BENV_IMAGE
         git submodule update  --init --recursive ext/
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -309,6 +325,10 @@ jobs:
         echo "github.workspace = ${{ github.workspace }}"
         docker pull $BENV_IMAGE
         git submodule update  --init --recursive ext/
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -347,6 +367,10 @@ jobs:
         echo "github.workspace = ${{ github.workspace }}"
         docker pull $BENV_IMAGE
         git submodule update  --init --recursive ext/
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -384,6 +408,10 @@ jobs:
         echo "github.workspace = ${{ github.workspace }}"
         docker pull $BENV_IMAGE
         git submodule update  --init --recursive ext/
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
@@ -422,6 +450,10 @@ jobs:
       run: |
         docker pull $BENV_IMAGE
         git submodule update  --init --recursive ext/
+        # Ensure ccache directory is writable inside container
+        mkdir -p "${{ github.workspace }}/.ccache"
+        chmod -R 777 "${{ github.workspace }}/.ccache" || true
+
         docker run -t \
         --rm \
         --mount "type=bind,source=${{ github.workspace }}/.ccache,destination=/ccache" \
