@@ -64,6 +64,12 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
+
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
@@ -120,6 +126,12 @@ jobs:
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
         fetch-depth: 0
+
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
 
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
@@ -178,6 +190,12 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
+
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
@@ -235,6 +253,12 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
+
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
@@ -266,6 +290,12 @@ jobs:
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
         fetch-depth: 0
+
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
 
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
@@ -299,6 +329,12 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
+
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
@@ -330,6 +366,12 @@ jobs:
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
         fetch-depth: 0
+    
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
 
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
@@ -363,6 +405,12 @@ jobs:
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
         fetch-depth: 0
+
+    - name: Cache and install ccache
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: ccache
+        version: 1.0
 
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
