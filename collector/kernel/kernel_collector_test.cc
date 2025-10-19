@@ -72,7 +72,7 @@ protected:
 
     // Allow relevant HTTP-related logs for this test
     set_log_whitelist<AgentLogKind>(
-        {AgentLogKind::HTTP, AgentLogKind::PROTOCOL, AgentLogKind::TCP, AgentLogKind::BPF, AgentLogKind::PERF});
+        {AgentLogKind::HTTP, AgentLogKind::PROTOCOL, AgentLogKind::BPF, AgentLogKind::PERF});
 
     ASSERT_EQ(0, uv_loop_init(&loop_));
   }
