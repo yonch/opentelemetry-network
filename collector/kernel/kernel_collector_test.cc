@@ -70,8 +70,7 @@ protected:
   {
     CommonTest::SetUp();
 
-    // Increase verbosity and whitelist relevant HTTP-related logs for this test
-    spdlog::set_level(spdlog::level::trace);
+    // Allow relevant HTTP-related logs for this test
     set_log_whitelist<AgentLogKind>(
         {AgentLogKind::HTTP, AgentLogKind::PROTOCOL, AgentLogKind::TCP, AgentLogKind::BPF, AgentLogKind::PERF});
 
