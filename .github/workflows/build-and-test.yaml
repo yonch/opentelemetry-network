@@ -679,8 +679,11 @@ jobs:
           # Wait a moment for reducer to start
           sleep 5
           
-          # Run kernel collector test
-          container_id=$(docker create -t --rm \
+          # Run kernel collector test and capture real exit code
+          echo "Starting kernel collector test..."
+          set +e  # disable exit on error to capture exit status
+          docker run --name kernel-collector-test-$$ \
+            --rm \
             --env EBPF_NET_HOST_DIR="/hostfs" \
             --privileged \
             --network host \
@@ -695,11 +698,7 @@ jobs:
             --env EBPF_NET_MINIDUMP_DIR="/hostfs/data/minidump" \
             --volume "$(pwd)/data:/hostfs/data" \
             localhost:5000/kernel-collector-test \
-            --log-console)
-          
-          echo "Starting kernel collector test..."
-          set +e  # disable exit on error to capture exit status
-          docker start -a $container_id
+            --log-console
           test_exit_code=$?
           set -e  # re-enable exit on error
           
