@@ -116,12 +116,12 @@ static __always_inline bool msg_iter_is_iov_or_kvec(const struct msghdr *msg, un
 
 // Resolve iovec pointer across kernel versions: use __iov if present (6.4+),
 // else fall back to iov (<= 6.3). Layout matches kvec, so it's valid either way.
-static __always_inline const struct iovec *msg_iter_get_iov(const struct msghdr *msg)
+static __always_inline struct iovec *msg_iter_get_iov(struct msghdr *msg)
 {
   if (bpf_core_field_exists(((struct msghdr *)0)->msg_iter.__iov)) {
-    return (const struct iovec *)BPF_CORE_READ(msg, msg_iter.__iov);
+    return (struct iovec *)BPF_CORE_READ(msg, msg_iter.__iov);
   }
-  return (const struct iovec *)BPF_CORE_READ((struct msghdr___5_13_19 *)msg, msg_iter.iov);
+  return (struct iovec *)BPF_CORE_READ((struct msghdr___5_13_19 *)msg, msg_iter.iov);
 }
 
 static __always_inline void tcp_send_stream_handler(
