@@ -24,6 +24,7 @@
 #include <util/json_converter.h>
 #include <util/log.h>
 #include <util/logger.h>
+#include <util/log_whitelist.h>
 #include <util/system_ops.h>
 
 #include <sys/utsname.h>
@@ -68,6 +69,15 @@ protected:
   void SetUp() override
   {
     CommonTest::SetUp();
+
+    // Increase verbosity and whitelist relevant HTTP-related logs for this test
+    spdlog::set_level(spdlog::level::trace);
+    set_log_whitelist<AgentLogKind>({
+        AgentLogKind::HTTP,
+        AgentLogKind::PROTOCOL,
+        AgentLogKind::TCP,
+        AgentLogKind::BPF,
+        AgentLogKind::PERF});
 
     ASSERT_EQ(0, uv_loop_init(&loop_));
   }
