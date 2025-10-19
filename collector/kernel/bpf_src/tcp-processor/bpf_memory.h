@@ -17,6 +17,8 @@
 // helpers that expect kernel pointers (verifier-unsafe).
 static __always_inline int string_starts_with(const char *s1, const size_t s1_len, const char *s2, const int s2_len)
 {
+  // Caller must ensure s1 points to stack-local memory (or otherwise safe
+  // for direct access). For kernel/user pointers, copy to stack first.
   if (s2_len <= 0) {
     return 1;
   }
@@ -27,17 +29,11 @@ static __always_inline int string_starts_with(const char *s1, const size_t s1_le
     return 0;
   }
 
-  // Read haystack prefix into a bounded stack buffer.
-  char s1_local[16] = {};
-  if (bpf_probe_read(s1_local, (u32)s2_len, s1) != 0) {
-    return 0;
-  }
-
   for (int i = 0; i < 16; i++) {
     if (i >= s2_len) {
       break;
     }
-    if (s1_local[i] != s2[i]) {
+    if (s1[i] != s2[i]) {
       return 0;
     }
   }

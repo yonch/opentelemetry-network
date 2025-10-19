@@ -34,51 +34,63 @@ static __always_inline enum TCP_PROTOCOL_DETECT_RESULT http_detect(
 
   // Does the buffer start with an HTTP verb?
   if (data_len >= 3) {
+    // Read up to the first 7 bytes once; this covers the longest patterns
+    // we check (e.g., "ONNECT"/"PTIONS" at offset 1).
+    int to_read = 7;
+    if ((size_t)to_read > data_len) {
+      to_read = (int)data_len;
+    }
+    char hdr[7] = {};
+    if (bpf_probe_read(hdr, (u32)to_read, data) != 0) {
+      return res;
+    }
 
-    char c = 0;
-    bpf_probe_read(&c, 1, data);
+    char c = hdr[0];
     switch (c) {
     case 'G':
-      res = string_starts_with(data + 1, data_len - 1, "ET", (int)(sizeof("ET") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+      res = string_starts_with(hdr + 1, (size_t)(to_read - 1), "ET", (int)(sizeof("ET") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       break;
     case 'H':
       if (data_len >= 4) {
-        res = string_starts_with(data + 1, data_len - 1, "EAD", (int)(sizeof("EAD") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(hdr + 1, (size_t)(to_read - 1), "EAD", (int)(sizeof("EAD") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
     case 'D':
       if (data_len >= 6) {
-        res = string_starts_with(data + 1, data_len - 1, "ELETE", (int)(sizeof("ELETE") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res =
+            string_starts_with(hdr + 1, (size_t)(to_read - 1), "ELETE", (int)(sizeof("ELETE") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
     case 'C':
       if (data_len >= 7) {
-        res = string_starts_with(data + 1, data_len - 1, "ONNECT", (int)(sizeof("ONNECT") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(hdr + 1, (size_t)(to_read - 1), "ONNECT", (int)(sizeof("ONNECT") - 1)) ? TPD_SUCCESS
+                                                                                                        : TPD_FAILED;
       }
       break;
     case 'O':
       if (data_len >= 7) {
-        res = string_starts_with(data + 1, data_len - 1, "PTIONS", (int)(sizeof("PTIONS") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(hdr + 1, (size_t)(to_read - 1), "PTIONS", (int)(sizeof("PTIONS") - 1)) ? TPD_SUCCESS
+                                                                                                        : TPD_FAILED;
       }
       break;
     case 'T':
       if (data_len >= 5) {
-        res = string_starts_with(data + 1, data_len - 1, "RACE", (int)(sizeof("RACE") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(hdr + 1, (size_t)(to_read - 1), "RACE", (int)(sizeof("RACE") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
 
     case 'P':
-      bpf_probe_read(&c, 1, data + 1);
+      c = (to_read > 1) ? hdr[1] : 0;
       switch (c) {
       case 'U':
-        res = string_starts_with(data + 2, data_len - 2, "T", (int)(sizeof("T") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(hdr + 2, (size_t)(to_read - 2), "T", (int)(sizeof("T") - 1)) ? TPD_SUCCESS : TPD_FAILED;
         break;
       case 'O':
-        res = string_starts_with(data + 2, data_len - 2, "ST", (int)(sizeof("ST") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(hdr + 2, (size_t)(to_read - 2), "ST", (int)(sizeof("ST") - 1)) ? TPD_SUCCESS : TPD_FAILED;
         break;
       case 'A':
         if (data_len >= 5) {
-          res = string_starts_with(data + 2, data_len - 2, "TCH", (int)(sizeof("TCH") - 1)) ? TPD_SUCCESS : TPD_FAILED;
+          res = string_starts_with(hdr + 2, (size_t)(to_read - 2), "TCH", (int)(sizeof("TCH") - 1)) ? TPD_SUCCESS : TPD_FAILED;
         }
         break;
       default:
