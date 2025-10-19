@@ -39,31 +39,31 @@ static __always_inline enum TCP_PROTOCOL_DETECT_RESULT http_detect(
     bpf_probe_read(&c, 1, data);
     switch (c) {
     case 'G':
-      res = string_starts_with(data + 1, data_len - 1, "ET") ? TPD_SUCCESS : TPD_FAILED;
+      res = string_starts_with(data + 1, data_len - 1, "ET", (int)(sizeof("ET") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       break;
     case 'H':
       if (data_len >= 4) {
-        res = string_starts_with(data + 1, data_len - 1, "EAD") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 1, data_len - 1, "EAD", (int)(sizeof("EAD") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
     case 'D':
       if (data_len >= 6) {
-        res = string_starts_with(data + 1, data_len - 1, "ELETE") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 1, data_len - 1, "ELETE", (int)(sizeof("ELETE") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
     case 'C':
       if (data_len >= 7) {
-        res = string_starts_with(data + 1, data_len - 1, "ONNECT") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 1, data_len - 1, "ONNECT", (int)(sizeof("ONNECT") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
     case 'O':
       if (data_len >= 7) {
-        res = string_starts_with(data + 1, data_len - 1, "PTIONS") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 1, data_len - 1, "PTIONS", (int)(sizeof("PTIONS") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
     case 'T':
       if (data_len >= 5) {
-        res = string_starts_with(data + 1, data_len - 1, "RACE") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 1, data_len - 1, "RACE", (int)(sizeof("RACE") - 1)) ? TPD_SUCCESS : TPD_FAILED;
       }
       break;
 
@@ -71,14 +71,14 @@ static __always_inline enum TCP_PROTOCOL_DETECT_RESULT http_detect(
       bpf_probe_read(&c, 1, data + 1);
       switch (c) {
       case 'U':
-        res = string_starts_with(data + 2, data_len - 2, "T") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 2, data_len - 2, "T", (int)(sizeof("T") - 1)) ? TPD_SUCCESS : TPD_FAILED;
         break;
       case 'O':
-        res = string_starts_with(data + 2, data_len - 2, "ST") ? TPD_SUCCESS : TPD_FAILED;
+        res = string_starts_with(data + 2, data_len - 2, "ST", (int)(sizeof("ST") - 1)) ? TPD_SUCCESS : TPD_FAILED;
         break;
       case 'A':
         if (data_len >= 5) {
-          res = string_starts_with(data + 2, data_len - 2, "TCH") ? TPD_SUCCESS : TPD_FAILED;
+          res = string_starts_with(data + 2, data_len - 2, "TCH", (int)(sizeof("TCH") - 1)) ? TPD_SUCCESS : TPD_FAILED;
         }
         break;
       default:
@@ -149,8 +149,10 @@ static __always_inline void http_process_response(
   char localdata[12] = {};
   bpf_probe_read(localdata, 12, data);
 
-  // Pattern match against HTTP/x.y
-  if (!string_starts_with(localdata, 12, "HTTP/") || localdata[6] != '.' || localdata[8] != ' ') {
+  // Pattern match against HTTP/x.y. localdata is on BPF stack, so compare directly
+  // instead of using string_starts_with (which reads via helpers).
+  if (!(localdata[0] == 'H' && localdata[1] == 'T' && localdata[2] == 'T' && localdata[3] == 'P' && localdata[4] == '/') ||
+      localdata[6] != '.' || localdata[8] != ' ') {
     goto finished_response;
   }
   int http_version_major = char_to_number(localdata[5]);
