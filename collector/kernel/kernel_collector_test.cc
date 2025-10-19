@@ -71,8 +71,7 @@ protected:
     CommonTest::SetUp();
 
     // Allow relevant HTTP-related logs for this test
-    set_log_whitelist<AgentLogKind>(
-        {AgentLogKind::HTTP, AgentLogKind::PROTOCOL, AgentLogKind::BPF, AgentLogKind::PERF});
+    set_log_whitelist<AgentLogKind>({AgentLogKind::HTTP, AgentLogKind::PROTOCOL, AgentLogKind::BPF, AgentLogKind::PERF});
 
     ASSERT_EQ(0, uv_loop_init(&loop_));
   }
