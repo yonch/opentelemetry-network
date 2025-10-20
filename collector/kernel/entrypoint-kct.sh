@@ -92,6 +92,15 @@ if [ -d /hostfs/data ]; then
     # Optional: emit a filtered file with only bpf_log messages from intake JSON
     jq '.[] | select(.name=="bpf_log")' /tmp/intake-dump-file.json > /hostfs/data/bpf-logs.json 2>/dev/null || true
   fi
+  if [ -e /tmp/workload-stress-ng-sock.log ]; then
+    cp -f /tmp/workload-stress-ng-sock.log /hostfs/data/ || true
+  fi
+  if compgen -G "/tmp/workload-stress-ng-sock.iter-*.strace" > /dev/null; then
+    cp -f /tmp/workload-stress-ng-sock.iter-*.strace /hostfs/data/ || true
+  fi
+  if [ -e /tmp/workload-stress-ng-timeouts ]; then
+    cp -f /tmp/workload-stress-ng-timeouts /hostfs/data/ || true
+  fi
 fi
 
 if [[ -n "${DELAY_EXIT}" ]]

@@ -28,6 +28,7 @@
 #include <util/system_ops.h>
 
 #include <sys/utsname.h>
+#include <unistd.h>
 
 #include <map>
 #include <regex>
@@ -188,6 +189,9 @@ protected:
     EXPECT_EQ(0ull, get_test_channel()->get_num_failed_sends());
     EXPECT_EQ(false, timeout_exceeded_);
 
+    // Fail the test if any workload iteration timed out
+    EXPECT_EQ(false, workload_timeout_detected_);
+
     auto &message_counts = get_test_channel()->get_message_counts();
     EXPECT_EQ(0ull, message_counts["bpf_log"]);
 
@@ -253,6 +257,13 @@ protected:
         return;
       }
 
+      // If any workload hit the per-iteration timeout, stop early and fail
+      if (workload_timeout_detected_) {
+        LOG::error("Detected workload per-iteration timeout; stopping test early");
+        stop_kernel_collector();
+        return;
+      }
+
       LOG::trace("stop_test_check() stop_conditions have been met - calling stop_kernel_collector()");
       stop_kernel_collector();
     };
@@ -315,24 +326,44 @@ protected:
 
   void add_workload_stress_ng_sock()
   {
-    add_workload([]() {
+    add_workload([this]() {
       // Emit stress-ng output live to console and also capture to a log file for later inspection.
       // Use bash for process substitution; fall back gracefully if stdbuf is unavailable.
-      system("bash -lc '"
-             "exec > >(tee -a /tmp/workload-stress-ng-sock.log) 2>&1; "
-             "echo starting workload; "
-             "echo stress-ng version: $(stress-ng --version 2>&1 || true); "
-             "for n in $(seq 1 10); do "
-             "  echo [workload-0] iteration $n start $(date -Is); "
-             "  if command -v stdbuf >/dev/null 2>&1; then "
-             "    stdbuf -oL -eL stress-ng --sock 2 --sock-domain ipv4 --sock-ops 1000 --sock-port 6787 --metrics-brief; "
-             "  else "
-             "    stress-ng --sock 2 --sock-domain ipv4 --sock-ops 1000 --sock-port 6787 --metrics-brief; "
-             "  fi; "
-             "  echo [workload-0] iteration $n end $(date -Is); "
-             "  sleep .1; "
-             "done; "
-             "echo workload complete'");
+      system(
+          "bash -lc '"
+          "exec > >(tee -a /tmp/workload-stress-ng-sock.log) 2>&1; "
+          "echo starting workload; "
+          "echo stress-ng version: $(stress-ng --version 2>&1 || true); "
+          "KREL=$(uname -r); "
+          "for n in $(seq 1 10); do "
+          "  echo [workload-0] iteration $n start $(date -Is); "
+          "  echo [workload-0] ss pre:; ss -tanp 2>/dev/null | head -n 50 || true; "
+          "  TRACE=\"\"; TRACE_OUT=/tmp/workload-stress-ng-sock.iter-${n}.strace; "
+          "  if [[ \"$KREL\" =~ ^5\\.15 ]]; then "
+          "    if command -v strace >/dev/null 2>&1; then TRACE=\"strace -f -ttT -s 128 -o ${TRACE_OUT}\"; fi; "
+          "  fi; "
+          "  if command -v stdbuf >/dev/null 2>&1; then "
+          "    CMD=\"stdbuf -oL -eL stress-ng --sock 2 --sock-domain ipv4 --sock-ops 1000 --sock-port 6787 --metrics-brief\"; "
+          "  else "
+          "    CMD=\"stress-ng --sock 2 --sock-domain ipv4 --sock-ops 1000 --sock-port 6787 --metrics-brief\"; "
+          "  fi; "
+          "  echo [workload-0] running: $TRACE $CMD; "
+          "  TOUT=\"\"; if command -v timeout >/dev/null 2>&1; then TOUT=\"timeout -k 2s 12s\"; fi; "
+          "  bash -lc \"$TOUT $TRACE $CMD\"; rc=$?; "
+          "  if [ \"$rc\" = \"124\" ]; then echo \"iteration $n timeout\" >> /tmp/workload-stress-ng-timeouts; fi; "
+          "  if [ -f \"$TRACE_OUT\" ]; then echo '[workload-0] strace tail:'; tail -n 40 \"$TRACE_OUT\" || true; cp -f \"$TRACE_OUT\" /hostfs/data/ || true; fi; "
+          "  echo [workload-0] rc=$rc; "
+          "  echo [workload-0] ss post:; ss -tanp 2>/dev/null | head -n 50 || true; "
+          "  echo [workload-0] iteration $n end $(date -Is); "
+          "  sleep .1; "
+          "done; "
+          "echo workload complete'");
+
+      // If any iteration timed out, mark test failure flag
+      if (access("/tmp/workload-stress-ng-timeouts", F_OK) == 0) {
+        LOG::error("workload-stress-ng: one or more iterations timed out; see logs and strace outputs");
+        workload_timeout_detected_ = true;
+      }
     });
   }
 
@@ -464,6 +495,9 @@ protected:
   size_t workload_index_ = 0;
   std::atomic<size_t> num_remaining_workloads_ = std::numeric_limits<size_t>::max();
   std::vector<std::function<void()>> workloads_;
+
+  // Set by workload if an iteration hits the per-iteration timeout
+  std::atomic<bool> workload_timeout_detected_ = false;
 
   std::optional<std::reference_wrapper<const StopConditions>> stop_conditions_;
 };

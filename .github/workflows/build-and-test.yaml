@@ -730,4 +730,7 @@ jobs:
         name: kernel-collector-dumps-${{ matrix.kernel }}
         path: |
           data/*.json
+          data/*.strace
+          data/workload-stress-ng-sock.log
+          data/workload-stress-ng-timeouts
         if-no-files-found: warn

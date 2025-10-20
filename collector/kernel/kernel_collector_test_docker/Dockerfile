@@ -15,7 +15,7 @@ ENTRYPOINT [ "/srv/entrypoint-kct.sh" ]
 
 RUN install_packages stress-ng
 
-RUN install_packages bc cgdb gawk gdb gzip iputils-ping jq netcat-openbsd procps python3 ripgrep vim valgrind curl
+RUN install_packages bc cgdb gawk gdb gzip iputils-ping jq netcat-openbsd procps python3 ripgrep vim valgrind curl strace iproute2
 
 COPY srv /srv
 WORKDIR /srv
