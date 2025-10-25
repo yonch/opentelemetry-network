@@ -8,9 +8,7 @@ add_executable(
   kernel-collector-legacy
     main.cc
 )
-target_link_libraries(
-  kernel-collector-legacy
-  PUBLIC
+set(KERNEL_COLLECTOR_LINK_LIBRARIES
     agentlib
     render_ebpf_net_ingest_writer
     render_rust_ebpf_net
@@ -21,6 +19,11 @@ target_link_libraries(
     args_parser
     system_ops
     spdlog
+)
+target_link_libraries(
+  kernel-collector-legacy
+  PUBLIC
+    ${KERNEL_COLLECTOR_LINK_LIBRARIES}
     static-executable
 )
 target_include_directories(
@@ -134,7 +137,8 @@ add_custom_command(
     -DPROJ_DIR=${PROJECT_SOURCE_DIR}
     -DRUST_BIN_TARGET_DIR=${RUST_BIN_TARGET_DIR}
     -P ${CMAKE_CURRENT_LIST_DIR}/cargo_build_rust.cmake
-  DEPENDS kernel-collector-legacy
+  DEPENDS 
+    ${KERNEL_COLLECTOR_LINK_LIBRARIES}
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   VERBATIM
 )
