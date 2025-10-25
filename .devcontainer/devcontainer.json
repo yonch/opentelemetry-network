@@ -9,13 +9,31 @@
     "source=${localEnv:HOME}/.codex/auth.json,target=/home/user/.codex/auth.json,readonly,type=bind",
     "source=${localEnv:HOME}/.ccache,target=/home/user/.ccache,type=bind"
   ],
+  // install tmux for reconnection
+  "postCreateCommand": "apt-get update && apt-get install -y tmux",
   "customizations": {
     "vscode": {
-      "settings": {},
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          // reconnect to tmux sessions in terminals
+          "tmux": {
+            "path": "/bin/bash",
+            "args": [
+              "-lc",
+              "SESS=$(tmux list-sessions -F '#{?session_attached,1,0} #{session_name}' 2>/dev/null); if [ -n \"$SESS\" ]; then DETACHED=$(printf '%s\n' \"$SESS\" | awk '$1==0{print $2}' | sort -V); TARGET=$(printf '%s\n' \"$DETACHED\" | sed -n 's/^sess\\([0-9][0-9]*\\)$/sess\\1/p' | head -n1); [ -z \"$TARGET\" ] && TARGET=$(printf '%s\n' \"$DETACHED\" | head -n1); if [ -n \"$TARGET\" ]; then exec tmux attach -t \"$TARGET\"; else MAX=$(printf '%s\n' \"$SESS\" | awk '{print $2}' | sed -n 's/^sess\\([0-9][0-9]*\\)$/\\1/p' | sort -n | tail -1); NEXT=$(( ${MAX:-0} + 1 )); exec tmux new -s \"sess$NEXT\"; fi; else exec tmux new -s sess1; fi"
+            ]
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "tmux"
+      },
       "extensions": [
         "eamodio.gitlens"
       ]
     }
   },
+
+  // keep container alive on SSH disconnections
+  "shutdownAction": "none",
+
   "remoteUser": "root"
 }
