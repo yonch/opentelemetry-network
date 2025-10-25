@@ -3,12 +3,45 @@
 version = 4
 
 [[package]]
+name = "cloud-collector-bin"
+version = "0.1.0"
+dependencies = [
+ "cloud-collector-sys",
+]
+
+[[package]]
+name = "cloud-collector-sys"
+version = "0.1.0"
+dependencies = [
+ "encoder_ebpf_net_cloud_collector",
+ "encoder_ebpf_net_ingest",
+]
+
+[[package]]
+name = "encoder_ebpf_net_cloud_collector"
+version = "0.1.0"
+
+[[package]]
 name = "encoder_ebpf_net_ingest"
 version = "0.1.0"
 
 [[package]]
 name = "encoder_ebpf_net_kernel_collector"
 version = "0.1.0"
+
+[[package]]
+name = "k8s-relay-bin"
+version = "0.1.0"
+dependencies = [
+ "k8s-relay-sys",
+]
+
+[[package]]
+name = "k8s-relay-sys"
+version = "0.1.0"
+dependencies = [
+ "encoder_ebpf_net_ingest",
+]
 
 [[package]]
 name = "kernel-collector-bin"

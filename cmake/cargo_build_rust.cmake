@@ -19,11 +19,15 @@ endif()
 # Read the CMake-generated link command for the dummy/existing C++ target
 file(READ "${LINK_FILE}" LINK_CONTENT)
 get_filename_component(LINK_DIR "${LINK_FILE}" DIRECTORY)
+# Derive the target binary directory (two levels up from CMakeFiles/<target>.dir)
+get_filename_component(_cmakefiles_dir "${LINK_DIR}" DIRECTORY)
+get_filename_component(TARGET_BIN_DIR "${_cmakefiles_dir}" DIRECTORY)
 
 # Seed library search paths with known build output dirs and system dirs
 set(SEARCH_DIRS
   "${BIN_DIR}/collector/kernel"
   "${BIN_DIR}/collector"
+  "${TARGET_BIN_DIR}"
   "${BIN_DIR}/render"
   "${BIN_DIR}/channel"
   "${BIN_DIR}/config"
@@ -130,4 +134,3 @@ if(NOT CARGO_RES EQUAL 0)
   message(STATUS "Cargo stderr:\n${CARGO_ERR}")
   message(FATAL_ERROR "Cargo build failed with exit code ${CARGO_RES}")
 endif()
-
