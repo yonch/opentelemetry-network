@@ -86,10 +86,14 @@ function(render_compile INPUT_DIR)
         "${OUTPUT_DIR}/${PACKAGE}/${APP}/wire_message.h"
         "${OUTPUT_DIR}/${PACKAGE}/${APP}/meta.h"
         "${OUTPUT_DIR}/${PACKAGE}/${APP}/bpf.h"
-        "${OUTPUT_DIR}/${PACKAGE}/${APP}/wire_messages.rs"
-        "${OUTPUT_DIR}/${PACKAGE}/${APP}/encoder.rs"
+        # Rust per-app crate files live under src/
+        "${OUTPUT_DIR}/${PACKAGE}/${APP}/src/wire_messages.rs"
+        "${OUTPUT_DIR}/${PACKAGE}/${APP}/src/encoder.rs"
         "${OUTPUT_DIR}/${PACKAGE}/${APP}/Cargo.toml"
         "${OUTPUT_DIR}/${PACKAGE}/${APP}/src/lib.rs"
+        # Headers that are also generated alongside sources
+        "${OUTPUT_DIR}/${PACKAGE}/${APP}/descriptor.h"
+        "${OUTPUT_DIR}/${PACKAGE}/${APP}/hash.h"
     )
     list(
       APPEND
