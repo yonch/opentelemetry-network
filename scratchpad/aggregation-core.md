@@ -15,7 +15,9 @@ High-Level Overview
 Entity Model and Keys
 - role (role + metadata)
   - Key: (s, version, env, ns, node_type, process, container)
+  >> what is the s variable here and under az?
   - Fields written: uid (external role UID)
+  >> What does it mean "Fields written"? Where is it written? And what is the external UID for?
   - Source: render/ebpf_net.render:1445, release/generated/ebpf_net/aggregation/spans.h
 - az (availability zone + role)
   - Key: (s, role)
@@ -23,6 +25,7 @@ Entity Model and Keys
 - node (endpoint instance)
   - Key: (id, ip, az)
   - Fields written: pod_name
+  >> What is fields written?
   - IP can be globally disabled; when disabled, the ip field is left empty and does not participate in uniqueness beyond the blank value
   - Source: render/ebpf_net.render:1405, release/generated/ebpf_net/aggregation/spans.h
 
@@ -31,6 +34,7 @@ Root Span and Aggregation Tree
 - Aggregation graph (projections), all metric stores at 30s interval:
   - agg_root.(proto)_{a_to_b,b_to_a} → node_node.(proto)_{a_to_b,b_to_a}
   - node_node.(proto)_{a_to_b,b_to_a} → az_node.(proto)_{a_to_b,b_to_a} and node_az.(proto)_{b_to_a,a_to_b} (propagates both orders)
+>> Can you give more detail about what it means to "propagate both orders" -- not clear here. And why does node_az have the order reversed (b_to_a,a_to_b rather than a_to_b,b_to_a)
   - az_node.(proto)_{a_to_b,b_to_a} → az_az.(proto)_{a_to_b,b_to_a}
 - Root stores use slots 2 (double-buffer), all others slots 1.
 - Sources:
