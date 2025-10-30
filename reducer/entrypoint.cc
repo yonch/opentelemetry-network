@@ -200,13 +200,26 @@ void otn_init_logging(bool log_console, bool no_log_file)
 void otn_set_log_level(int level_code)
 {
   switch (level_code) {
-  case 0: spdlog::set_level(spdlog::level::trace); break;
-  case 1: spdlog::set_level(spdlog::level::debug); break;
-  case 2: spdlog::set_level(spdlog::level::info); break;
-  case 3: spdlog::set_level(spdlog::level::warn); break;
-  case 4: spdlog::set_level(spdlog::level::err); break;
-  case 5: spdlog::set_level(spdlog::level::critical); break;
-  default: break; // no-op on unknown
+  case 0:
+    spdlog::set_level(spdlog::level::trace);
+    break;
+  case 1:
+    spdlog::set_level(spdlog::level::debug);
+    break;
+  case 2:
+    spdlog::set_level(spdlog::level::info);
+    break;
+  case 3:
+    spdlog::set_level(spdlog::level::warn);
+    break;
+  case 4:
+    spdlog::set_level(spdlog::level::err);
+    break;
+  case 5:
+    spdlog::set_level(spdlog::level::critical);
+    break;
+  default:
+    break; // no-op on unknown
   }
 }
 } // namespace reducer_cfg
