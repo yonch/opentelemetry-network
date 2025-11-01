@@ -52,7 +52,9 @@ Hashing and Equality
 - Entry<K,V>: Hash/Eq delegate to `key`.
 - PreHashedKey: Hash by `hash`, Eq by `slot`.
 - Ref: Hash and Eq use `(owner_ptr, slot)` to avoid cross-map collisions, where `owner_ptr` is the `NonNull<Inner>` address.
- - Index operations use `raw_entry` with the stored prehash and a predicate that matches by `slot` (and, for lookup, confirms the borrowed key), avoiding reliance on `PreHashedKey`'s `Eq` in standard lookups.
+ - Index operations:
+   - Lookup by `Q` uses `raw_entry` with the stored prehash and a predicate that confirms key equality and liveness.
+   - Removal by slot uses `remove(&PreHashedKey { hash, slot })`, since the exact key is known.
 
 Public API
 - Types
@@ -96,13 +98,13 @@ Indexing Strategy (boxless; no key duplication)
 - For insertions:
   - Begin with cleanup of dropped slots to keep the index accurate (see Deferred Deletion).
   - Compute `h1 = make_hash(&key)` and `h2 = make_outer(h1)`.
-  - Probe with `raw_entry_mut().from_hash(h2, …)`; if vacant, create Entry and insert in SlotMap; then insert PreHashedKey { hash: h1, slot } into index using ordinary insert or raw insertion. (If using raw insert, pass h2.)
+  - Probe with `raw_entry_mut().from_hash(h2, …)`; if vacant, create Entry and insert in SlotMap; then insert PreHashedKey { hash: h1, slot } into index using ordinary insert.
 
 - Operational Semantics
 - make_hash(&self, q) -> u64 (h1): computes the inner hash via the map’s `S: BuildHasher`.
 - make_outer(&self, h1: u64) -> u64 (h2): builds a fresh `S::Hasher`, hashes `PreHashedKey { hash: h1, slot: any }` into it (slot is ignored by Hash), then returns finish().
 - Cleanup before mutation:
-  - Each &mut self operation (insert/get_or_insert_with/access_mut/shrink_to_fit) starts with `cleanup_dropped()`. It repeatedly pops `dropped_head`, follows the next pointers encoded in `ref_or_next`, removes each slot from `index` (using the stored `hash`) and from `entries`, until the list is empty.
+  - Each &mut self operation (insert/get_or_insert_with/access_mut/shrink_to_fit) starts with `cleanup_dropped()`. It repeatedly pops `dropped_head`, follows the next pointers encoded in `ref_or_next`, removes each slot from `index` via `index.remove(&PreHashedKey { hash, slot })` and from `entries`, until the list is empty.
 - Insertion path (missing key):
   1) Cleanup dropped slots.
   2) Compute `h1 = make_hash(&key)` and `h2 = make_outer(h1)`.
@@ -227,10 +229,8 @@ impl<K, V, S> RcHashMap<K, V, S> {
             // Remove from index and entries
             if let Some(ent) = inner_mut.entries.get(head) {
                 let h1 = ent.hash;
-                let mut state = inner_mut.hasher.build_hasher();
-                PreHashedKey { hash: h1, slot: head }.hash(&mut state);
-                let h2 = state.finish();
-                inner_mut.index.raw_entry_mut().from_hash(h2, |p| p.slot == head).remove();
+                let key = PreHashedKey { hash: h1, slot: head };
+                inner_mut.index.remove(&key);
             }
             inner_mut.entries.remove(head);
             inner_mut.dropped_head.set(next);
