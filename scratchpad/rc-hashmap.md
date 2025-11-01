@@ -69,10 +69,10 @@ Public API
     - Runs cleanup first.
 - Handle utilities (all value access via RcHashMap)
   - Ref::slot_key(&self) -> DefaultKey
-  - RcHashMap::access<'a>(&'a self, r: &Ref<K, V, S>) -> Option<&'a V>
-    - Returns None if the slot is queued/removed.
-  - RcHashMap::access_mut<'a>(&'a mut self, r: &Ref<K, V, S>) -> Option<&'a mut V>
-    - Runs cleanup first; returns None if the slot is queued/removed.
+  - RcHashMap::access<'a>(&'a self, r: &Ref<K, V, S>) -> &'a V
+    - Guaranteed alive while `Ref` exists; no Option needed.
+  - RcHashMap::access_mut<'a>(&'a mut self, r: &Ref<K, V, S>) -> &'a mut V
+    - Runs cleanup first; guaranteed alive while `Ref` exists; no Option needed.
   - Ref::refcount(&self) -> usize
 - Maintenance
   - shrink_to_fit(&mut self) — cleans dropped slots and shrinks internal storage.
@@ -80,32 +80,39 @@ Public API
 
 Indexing Strategy (boxless; no key duplication)
 - Store only PreHashedKey { hash, slot } in the index; do not duplicate `K`.
+- Double-hash convention (accepted for simplicity):
+  - Inner hash h1 = make_hash(K) using the map’s BuildHasher (stored in Entry.hash).
+  - Outer hash h2 is computed by hashing a temporary `PreHashedKey { hash: h1, slot: any }` with the same BuildHasher (slot is ignored by PreHashedKey::Hash). This mirrors exactly what normal HashMap hashing would do.
+  - Insert and lookups must both use h2 in raw_entry().from_hash to be consistent.
 - For lookups by Q:
-  - Compute `hash(q)` using the map’s hasher.
-  - Use `raw_entry().from_hash(hash, |p: &PreHashedKey| entries.get(p.slot).map_or(false, |e| e.is_alive() && e.key.borrow() == q))` to probe. Entries queued for deletion (ref_or_next is Next) are treated as absent.
+  - Compute `h1 = make_hash(q)`.
+  - Compute `h2 = make_outer(h1)` (build a hasher, write_u64(h1), finish()).
+  - Use `raw_entry().from_hash(h2, |p: &PreHashedKey| entries.get(p.slot).map_or(false, |e| e.is_alive() && e.key.borrow() == q))` to probe. Entries queued for deletion (ref_or_next is Next) are treated as absent.
 - For insertions:
   - Begin with cleanup of dropped slots to keep the index accurate (see Deferred Deletion).
-  - Same raw lookup; if vacant, create Entry and insert in SlotMap; then insert PreHashedKey { hash, slot } into index.
+  - Compute `h1 = make_hash(&key)` and `h2 = make_outer(h1)`.
+  - Probe with `raw_entry_mut().from_hash(h2, …)`; if vacant, create Entry and insert in SlotMap; then insert PreHashedKey { hash: h1, slot } into index using ordinary insert or raw insertion. (If using raw insert, pass h2.)
 
-Operational Semantics
-- make_hash(&self, q): computes a u64 via the map’s `S: BuildHasher`.
+- Operational Semantics
+- make_hash(&self, q) -> u64 (h1): computes the inner hash via the map’s `S: BuildHasher`.
+- make_outer(&self, h1: u64) -> u64 (h2): builds a fresh `S::Hasher`, hashes `PreHashedKey { hash: h1, slot: any }` into it (slot is ignored by Hash), then returns finish().
 - Cleanup before mutation:
   - Each &mut self operation (insert/get_or_insert_with/access_mut/shrink_to_fit) starts with `cleanup_dropped()`. It repeatedly pops `dropped_head`, follows the next pointers encoded in `ref_or_next`, removes each slot from `index` (using the stored `hash`) and from `entries`, until the list is empty.
 - Insertion path (missing key):
   1) Cleanup dropped slots.
-  2) Compute `hash = make_hash(&key)`.
-  3) Probe `index.raw_entry().from_hash(hash, eq_by_q)` using `entries[...]` in the equality closure.
+  2) Compute `h1 = make_hash(&key)` and `h2 = make_outer(h1)`.
+  3) Probe `index.raw_entry().from_hash(h2, eq_by_q)` using `entries[...]` in the equality closure.
   4) If vacant, insert `Entry { key, value: mk_val(), ref_or_next: Cell::new(Count(1)), slot_key: DefaultKey::default(), hash }` into `entries` and get `slot`.
   5) Write `slot` back to the stored Entry’s `slot_key`.
   6) Insert `PreHashedKey { hash, slot }` into `index` with value `()`.
   7) Return Ref { slot, owner: inner }.
 - Lookup path (existing key, read-only `get`):
   1) Does not run cleanup.
-  2) Compute `hash(q)` and probe index with raw_entry + equality closure that also checks `e.is_alive()`.
+  2) Compute `h1 = make_hash(q)`, `h2 = make_outer(h1)`, and probe index with `raw_entry().from_hash(h2, …)` and equality closure that also checks `e.is_alive()`.
   3) If found and alive, increment the `Count` via the entry’s Cell, and return Ref; otherwise return None.
 - Value access:
-  - access(&self, r): returns `&V` if the entry is alive; otherwise None. Does not perform cleanup.
-  - access_mut(&mut self, r): runs cleanup first, then returns `&mut V` if alive; otherwise None.
+  - access(&self, r): returns `&V`. By invariant, if a `Ref` exists, the entry is alive and not queued for deletion. Does not perform cleanup.
+  - access_mut(&mut self, r): runs cleanup first, then returns `&mut V`. The invariant holds because `Ref` existence implies the entry is alive.
 - Ref drop (deferred deletion):
   1) Read the entry’s `ref_or_next` Cell; if Count(n>1), decrement to Count(n-1) and return.
   2) If Count(1), change it to Next(current_dropped_head), and set `dropped_head` to this slot. Do not touch `index` or `entries` structure.
@@ -122,7 +129,8 @@ Complexity
 
 Safety and Soundness
 - Ref does not implement Deref. All value access is via RcHashMap.
-- access(&self, …) returns `&V` and access_mut(&mut self, …) returns `&mut V`, ensuring inserts/get_or_insert (which require &mut self) cannot run while the reference is live.
+- access(&self, …) returns `&V` and access_mut(&mut self, …) returns `&mut V` (no Option). Invariant: if a Ref exists for a slot, that slot’s ref_or_next is Count(n>0), so the entry is alive and present in entries; only the last Ref::drop transitions to Next and there are no Refs left afterward.
+- Inserts/get_or_insert require &mut self, so they cannot run while a `&V` or `&mut V` from access/access_mut is live.
 - Drops do not attempt structural mutation: Ref::drop only updates interior Cells and the dropped list head. Physical removals happen during cleanup in &mut self methods.
 - Lookups treat queued (dead) entries as absent, preserving correctness even if cleanup hasn’t run yet.
 - Precomputed hashes are derived from the map’s `BuildHasher` and stored in the Entry; physical removal uses the stored hash to remove from the index without touching the key after removal.
@@ -139,6 +147,7 @@ use core::{cell::Cell, hash::Hash, borrow::Borrow, ptr::NonNull};
 use hashbrown::HashMap; // or std::collections::HashMap
 use slotmap::{SlotMap, DefaultKey};
 use std::rc::Rc;
+use std::hash::Hasher; // for write_u64/finish in outer-hash examples
 
 #[derive(Copy, Clone)]
 enum RefOrNext { Count(usize), Next(Option<DefaultKey>) }
@@ -177,18 +186,18 @@ pub struct Ref<K, V, S = RandomState> {
 }
 
 impl<K, V, S> RcHashMap<K, V, S> {
-    pub fn access<'a>(&'a self, r: &Ref<K, V, S>) -> Option<&'a V> {
+    pub fn access<'a>(&'a self, r: &Ref<K, V, S>) -> &'a V {
         let inner: &Inner<K, V, S> = &self.rc_inner;
-        let e = inner.entries.get(r.slot)?;
-        if e.is_alive() { Some(&e.value) } else { None }
+        let e = inner.entries.get(r.slot).expect("dangling Ref");
+        &e.value
     }
 
-    pub fn access_mut<'a>(&'a mut self, r: &Ref<K, V, S>) -> Option<&'a mut V> {
+    pub fn access_mut<'a>(&'a mut self, r: &Ref<K, V, S>) -> &'a mut V {
         // Cleanup dropped slots before mutation
         self.cleanup_dropped();
-        let inner_mut: &mut Inner<K, V, S> = Rc::get_mut(&mut self.rc_inner)?;
-        let e = inner_mut.entries.get_mut(r.slot)?;
-        if e.is_alive() { Some(&mut e.value) } else { None }
+        let inner_mut: &mut Inner<K, V, S> = Rc::get_mut(&mut self.rc_inner).expect("concurrent borrows");
+        let e = inner_mut.entries.get_mut(r.slot).expect("dangling Ref");
+        &mut e.value
     }
 
     fn cleanup_dropped(&mut self) {
@@ -201,8 +210,11 @@ impl<K, V, S> RcHashMap<K, V, S> {
             };
             // Remove from index and entries
             if let Some(ent) = inner_mut.entries.get(head) {
-                let hash = ent.hash;
-                inner_mut.index.raw_entry_mut().from_hash(hash, |p| p.slot == head).remove();
+                let h1 = ent.hash;
+                let mut state = inner_mut.hasher.build_hasher();
+                PreHashedKey { hash: h1, slot: head }.hash(&mut state);
+                let h2 = state.finish();
+                inner_mut.index.raw_entry_mut().from_hash(h2, |p| p.slot == head).remove();
             }
             inner_mut.entries.remove(head);
             inner_mut.dropped_head.set(next);
@@ -235,12 +247,12 @@ let mut h2 = DefaultHasher::new(); a2.hash(&mut h2);
 assert_eq!(h1.finish(), h2.finish());
 
 // Read via RcHashMap::access
-let len = map.access(&a1).map(|v| v.len()).unwrap();
+let len = map.access(&a1).len();
 
 // Mutate via exclusive access to the map
 let mut map = map; // make the binding mutable for demonstration
 {
-    let vmut: &mut Vec<u8> = map.access_mut(&a2).unwrap();
+    let vmut: &mut Vec<u8> = map.access_mut(&a2);
     vmut.push(4);
 } // vmut drops here; map usable again
 
@@ -252,7 +264,7 @@ Testing Plan
 - Lifecycle: insert → clone Ref → drop clones → ensure queuing onto dropped list → cleanup removes from index and SlotMap.
 - Hash/Eq correctness: Ref equality and hashing include map identity and slot.
 - Access safety: `access`/`access_mut` enforce exclusivity via &self/&mut self; verify inserts/get_or_insert cannot run while references are live.
-- Liveness checks: `get(&self)` and `access(&self)` treat queued-for-deletion entries as absent.
+- Liveness invariant: while any Ref exists, access/access_mut always return references to live entries; get(&self) treats queued-for-deletion entries as absent.
 - Capacity maintenance: `shrink_to_fit()` triggers cleanup and shrinks containers; clear with zero refcounts.
 - Stress: repeat insert/get/drop sequences; ensure len == 0 after cleanup and no panics.
 
