@@ -3,7 +3,7 @@ RcHashMap: Single-threaded, refcounted map with a boxless SlotMap
 Overview
 - Goal: A HashMap-like structure storing reference-counted key→value pairs. Clients get Rc-like handles (Ref) that provide identity and lifetime management; actual value access happens only through RcHashMap methods to ensure exclusivity rules.
 - Design: Store Entry<K,V> by value inside a SlotMap. A separate index HashMap stores small, prehashed keys mapping to SlotMap indices. Ref identifies entries by the SlotMap key. All value access uses RcHashMap::{access, access_mut} so that inserts and other &mut operations cannot run while a user holds a reference to V.
-- New decisions: Ref no longer borrows the map; it holds a raw, non-null pointer to an internal Inner. To avoid conflicts with live accesses, we defer physical removals: when an entry’s refcount reaches 0, it is pushed onto a singly linked “dropped slots” list. We clean this list at the start of every &mut self operation (insert/get_or_insert/access_mut/shrink) and expose an explicit shrink method.
+- New decisions: Ref no longer borrows the map; it holds a raw, non-null pointer to an internal Inner. To avoid conflicts with live accesses, we defer physical removals: when an entry’s refcount reaches 0, it is pushed onto a singly linked “dropped slots” list. We clean this list at the start of every &mut self operation (insert/get_or_insert/access_mut/shrink_to_fit) and expose an explicit shrink_to_fit method.
 - Constraints: Single-threaded; no atomics; no per-entry heap allocations; no global registries. Ref cloning, hashing, equality, and drop must be O(1).
 
 Prior Art
@@ -22,8 +22,7 @@ Data Model
   - slot_key: slotmap::DefaultKey — index of this Entry in SlotMap.
   - hash: u64 — precomputed hash of `key` using the map’s BuildHasher.
 - Containers inside RcHashMap<K, V, S = RandomState>
-  - rc_inner: Rc<Inner<K, V, S>> — owning handle of map state.
-  - inner: NonNull<Inner<K, V, S>> — raw pointer for O(1) handle ops without Rc bumps.
+  - rc_inner: Rc<Inner<K, V, S>> — owning handle of map state. Refs capture a raw pointer to this Inner at creation time; RcHashMap itself does not store a NonNull cache.
 - Inner<K, V, S>
   - entries: slotmap::SlotMap<DefaultKey, Entry<K, V>>
   - index: std::collections::HashMap<PreHashedKey, (), S>
@@ -36,7 +35,7 @@ Data Model
   - Hash/Eq: Hash uses `hash`; Eq compares `slot`.
 - RefOrNext (internal representation)
   - Count(usize) — current Ref count; Count(1) means one live handle.
-  - Next(DefaultKey) — queued for deletion; value stores the next slot in the dropped list.
+  - Next(Option<DefaultKey>) — queued for deletion; value stores the next slot in the dropped list (None marks end).
 
 Handles
 - Ref<K, V, S>
@@ -45,6 +44,7 @@ Handles
   - Clone: increments Entry refcount via interior Cell.
   - Drop: decrements; when zero, pushes slot onto the dropped list by rewriting `ref_or_next` to Next(head) and updating `dropped_head` to this slot. Physical removal is deferred.
   - Does not implement Deref. All value access goes through RcHashMap::{access, access_mut}.
+  - Owner pointer acquisition: computed once at Ref creation via `NonNull::new_unchecked(Rc::as_ptr(&rc_inner))`. This is O(1) and does not increment the Rc count. RcHashMap does not cache a NonNull; storing it only in Ref avoids needless duplication.
 
 Hashing and Equality
 - Entry<K,V>: Hash/Eq delegate to `key`.
@@ -75,8 +75,7 @@ Public API
     - Runs cleanup first; returns None if the slot is queued/removed.
   - Ref::refcount(&self) -> usize
 - Maintenance
-  - shrink_to_fit(&mut self)
-  - shrink(&mut self) — cleans dropped slots and may shrink internal storage; safe to call explicitly.
+  - shrink_to_fit(&mut self) — cleans dropped slots and shrinks internal storage.
   - clear(&mut self) — debug-asserts all refcounts are zero; drops all storage.
 
 Indexing Strategy (boxless; no key duplication)
@@ -91,7 +90,7 @@ Indexing Strategy (boxless; no key duplication)
 Operational Semantics
 - make_hash(&self, q): computes a u64 via the map’s `S: BuildHasher`.
 - Cleanup before mutation:
-  - Each &mut self operation (insert/get_or_insert_with/access_mut/shrink) starts with `cleanup_dropped()`. It repeatedly pops `dropped_head`, follows the next pointers encoded in `ref_or_next`, removes each slot from `index` (using the stored `hash`) and from `entries`, until the list is empty.
+  - Each &mut self operation (insert/get_or_insert_with/access_mut/shrink_to_fit) starts with `cleanup_dropped()`. It repeatedly pops `dropped_head`, follows the next pointers encoded in `ref_or_next`, removes each slot from `index` (using the stored `hash`) and from `entries`, until the list is empty.
 - Insertion path (missing key):
   1) Cleanup dropped slots.
   2) Compute `hash = make_hash(&key)`.
@@ -110,8 +109,8 @@ Operational Semantics
 - Ref drop (deferred deletion):
   1) Read the entry’s `ref_or_next` Cell; if Count(n>1), decrement to Count(n-1) and return.
   2) If Count(1), change it to Next(current_dropped_head), and set `dropped_head` to this slot. Do not touch `index` or `entries` structure.
-- shrink():
-  - Public &mut method to force cleanup (and optionally call `shrink_to_fit` on both containers). This is also a way for users to “ask the internals to free memory now”.
+- shrink_to_fit():
+  - Public &mut method to force cleanup and then shrink the internal containers.
 - Keepalive (map lifetime while Refs exist):
   - On RcHashMap::drop, if there are outstanding Refs (detectable via `dropped_head` and/or per-entry counts), set `keepalive` to Some(rc_inner.clone()) before dropping; this ensures the map’s storage outlives RcHashMap. When the last Ref across all slots is dropped and cleanup runs, `keepalive` is cleared, allowing Inner to be freed.
 
@@ -119,7 +118,7 @@ Complexity
 - get/insert/remove: O(1) average; cleanup is proportional to the number of dropped slots waiting in the list (amortized O(1) when cleanup happens incrementally).
 - Ref clone/drop: O(1). Drops never touch the index or the SlotMap — they only update Cells and the dropped list head.
 - Hashing Ref: O(1) by hashing `(owner_ptr, slot)`.
-- Memory: one SlotMap element per entry plus a tiny PreHashedKey in the index; no per-entry Box; dropped-but-not-cleaned entries are bounded by user patterns and cleaned on next operation or shrink().
+  - Memory: one SlotMap element per entry plus a tiny PreHashedKey in the index; no per-entry Box; dropped-but-not-cleaned entries are bounded by user patterns and cleaned on next operation or shrink_to_fit().
 
 Safety and Soundness
 - Ref does not implement Deref. All value access is via RcHashMap.
@@ -142,7 +141,7 @@ use slotmap::{SlotMap, DefaultKey};
 use std::rc::Rc;
 
 #[derive(Copy, Clone)]
-enum RefOrNext { Count(usize), Next(DefaultKey) }
+enum RefOrNext { Count(usize), Next(Option<DefaultKey>) }
 
 struct Entry<K, V> {
     key: K,
@@ -170,7 +169,6 @@ struct Inner<K, V, S> {
 
 pub struct RcHashMap<K, V, S = RandomState> {
     rc_inner: Rc<Inner<K, V, S>>,
-    inner: NonNull<Inner<K, V, S>>, // cached raw pointer for handle ops
 }
 
 pub struct Ref<K, V, S = RandomState> {
@@ -180,8 +178,7 @@ pub struct Ref<K, V, S = RandomState> {
 
 impl<K, V, S> RcHashMap<K, V, S> {
     pub fn access<'a>(&'a self, r: &Ref<K, V, S>) -> Option<&'a V> {
-        // Safety: inner points to rc_inner; rc_inner is alive while &self is.
-        let inner: &Inner<K, V, S> = unsafe { self.inner.as_ref() };
+        let inner: &Inner<K, V, S> = &self.rc_inner;
         let e = inner.entries.get(r.slot)?;
         if e.is_alive() { Some(&e.value) } else { None }
     }
@@ -199,7 +196,7 @@ impl<K, V, S> RcHashMap<K, V, S> {
         while let Some(head) = inner_mut.dropped_head.get() {
             // Read next pointer
             let next = match inner_mut.entries.get(head).map(|e| e.ref_or_next.get()) {
-                Some(RefOrNext::Next(n)) => Some(n),
+                Some(RefOrNext::Next(n)) => n,
                 _ => None,
             };
             // Remove from index and entries
@@ -213,7 +210,7 @@ impl<K, V, S> RcHashMap<K, V, S> {
         // Optionally shrink_to_fit here
     }
 
-    pub fn shrink(&mut self) {
+    pub fn shrink_to_fit(&mut self) {
         self.cleanup_dropped();
         if let Some(inner_mut) = Rc::get_mut(&mut self.rc_inner) {
             inner_mut.index.shrink_to_fit();
@@ -256,11 +253,11 @@ Testing Plan
 - Hash/Eq correctness: Ref equality and hashing include map identity and slot.
 - Access safety: `access`/`access_mut` enforce exclusivity via &self/&mut self; verify inserts/get_or_insert cannot run while references are live.
 - Liveness checks: `get(&self)` and `access(&self)` treat queued-for-deletion entries as absent.
-- Capacity maintenance: shrink() triggers cleanup and optional shrink_to_fit; clear with zero refcounts.
+- Capacity maintenance: `shrink_to_fit()` triggers cleanup and shrinks containers; clear with zero refcounts.
 - Stress: repeat insert/get/drop sequences; ensure len == 0 after cleanup and no panics.
 
 Rationale Recap
 - Boxless entries avoid per-entry allocations while SlotMap gives stable, cheap keys.
 - Prehashed raw-entry indexing avoids duplicating K and avoids self-referential references.
 - Decoupling handles from borrowing the map removes the &self lifetime coupling while keeping all value access centralized in RcHashMap via access/access_mut.
-- Deferred deletion keeps handle operations O(1) and avoids borrow conflicts; users can call shrink() to proactively reclaim memory.
+- Deferred deletion keeps handle operations O(1) and avoids borrow conflicts; users can call shrink_to_fit() to proactively reclaim memory and run cleanup.
