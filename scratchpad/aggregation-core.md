@@ -179,6 +179,27 @@ Output Channels and Writer Selection
 - Rollup and timestamp are attached per batch; timestamp is aligned to the end of the 30s slot
 - Sources: reducer/aggregation/tsdb_encoder.* and reducer/tsdb_formatter.*
 
+OTLP Metric Types and Descriptions
+- All OTLP metric kinds are determined by MetricInfo.type and mapped in OtlpGrpcFormatter to Sum or Gauge.
+  - Mapping site: reducer/otlp_grpc_formatter.cc:36 (kind from MetricInfo.type)
+- Canonical names, types, units, and descriptions are defined in:
+  - reducer/metric_info.h:1 (MetricInfo, MetricType)
+  - reducer/metric_info.cc:1 (per-metric info)
+- Summary of types by protocol:
+  - TCP
+    - Sum: tcp.bytes, tcp.packets, tcp.retrans, tcp.syn_timeouts, tcp.new_sockets, tcp.resets
+    - Gauge: tcp.rtt_num_measurements, tcp.active, tcp.rtt_average
+  - UDP
+    - Sum: udp.bytes, udp.packets, udp.drops
+    - Gauge: udp.active
+  - DNS
+    - Sum: dns.responses, dns.timeouts
+    - Gauge: dns.active_sockets, dns.client.duration.average, dns.server.duration.average
+  - HTTP
+    - Sum: http.status_code (with label status_code in {200,400,500,other})
+    - Gauge: http.active_sockets, http.client.duration.average, http.server.duration.average
+  - Exact text and units in reducer/metric_info.cc:1
+
 Feature Flags and Configuration
 - enable_id_id: emit id_id (node-node) metrics
 - enable_az_id: emit az_id and id_az (az-node) metrics
@@ -210,6 +231,15 @@ Directional Semantics
     - reverse=0 → aggregation="az_id" (source.az → dest.node)
     - reverse=1 → aggregation="id_az" (source.node → dest.az)
   - az_az: direction-specific stores exist; encoder does not swap labels
+
+Zero Injection Policy
+- Scope: only applies to node_node projection for all protocols (tcp/udp/http/dns), per direction.
+- Trigger: if the aggregated metrics for a node_node timeslot had activity (metrics.active_sockets > 0), the encoder schedules a zero-valued update for the next 30s slot at timestamp (t + interval).
+  - Implementation: reducer/aggregation/tsdb_encoder.inl:1 (node_node operator) sets zero_metrics = {} and calls span.A_B_UPDATE or B_A_UPDATE with t + interval when metrics.active_sockets > 0.
+  - Effect: ensures exactly one trailing zero timeslot after activity ceases, and keeps handles alive one more interval to reduce churn.
+- Not per-metric: the single zero point covers the entire metric family for that label set (all metrics in that family will be zero for that next slot).
+- Outputs: zeros are produced by the underlying stores and will be emitted by all enabled outputs (Prometheus/JSON and OTLP). This is not Prometheus-only.
+- Projections az_node and az_az do not inject zeros; they will reflect whatever propagated values exist for the slot.
 
 Invariants and Edge Cases
 - If required references cannot be allocated (pool exhaustion), update_node drops the update
