@@ -5,6 +5,10 @@
 
 #pragma once
 
+#include <generated/ebpf_net/aggregation/connection.h>
+#include <generated/ebpf_net/aggregation/index.h>
+#include <generated/ebpf_net/aggregation/protocol.h>
+#include <generated/ebpf_net/aggregation/transform_builder.h>
 #include <reducer/core_base.h>
 
 #include <memory>
@@ -38,7 +42,6 @@ public:
 
   // Enables generating flow logs from node-node (id-id) metrics.
   static void set_flow_logs_enabled(bool enabled);
-
 
   AggCore(
       RpcQueueMatrix &matching_to_aggregation_queues,

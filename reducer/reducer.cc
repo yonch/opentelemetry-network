@@ -154,7 +154,6 @@ void Reducer::init_config()
 void Reducer::init_cores()
 {
   const size_t num_stat_writers = 1; // one for the logging core
-  const size_t num_prom_metric_writers = config_.num_aggregation_shards * config_.partitions_per_shard;
 
   if (config_.enable_otlp_grpc_metrics) {
     stats_publisher_ = std::make_unique<reducer::OtlpGrpcPublisher>(
