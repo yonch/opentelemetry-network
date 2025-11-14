@@ -21,6 +21,9 @@
 
 #include <memory>
 
+// cxx::bridge header for Rust MatchingCore
+#include <reducer_matching_cxxbridge.h>
+
 namespace reducer {
 class RpcQueueMatrix;
 }
@@ -61,6 +64,11 @@ public:
   // Logger instance.
   ::ebpf_net::matching::weak_refs::logger logger();
 
+  // Run the matching core using the Rust implementation.
+  void run();
+  // Stop the Rust core.
+  void stop_async();
+
 private:
   // Flag indicating whether IP addresses should be used for autonomous systems.
   static bool autonomous_system_ip_enabled_;
@@ -77,6 +85,9 @@ private:
 
   // For writing logs to the logging core.
   ::ebpf_net::matching::auto_handles::logger logger_;
+
+  // Opaque Rust MatchingCore owned via cxx rust::Box
+  rust::Box<reducer_matching::MatchingCore> rust_core_;
 
   void on_timeslot_complete() override;
 

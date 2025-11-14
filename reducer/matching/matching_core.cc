@@ -16,6 +16,7 @@
 #include <generated/ebpf_net/matching/containers.inl>
 
 #include <platform/userspace-time.h>
+#include <reducer/util/thread_ops.h>
 #include <util/log.h>
 #include <util/log_formatters.h>
 #include <util/log_modifiers.h>
@@ -77,10 +78,21 @@ MatchingCore::MatchingCore(
       matching_to_aggregation_stats_(shard_num, "matching", "aggregation", matching_to_aggregation_queues),
       matching_to_logging_stats_(shard_num, "matching", "logging", matching_to_logging_queues),
       core_stats_(index_.core_stats.alloc()),
-      logger_(index_.logger.alloc())
-{
-  add_rpc_clients(ingest_to_matching_queues.make_readers(shard_num), ClientType::ingest, ingest_to_matching_stats_);
-}
+      logger_(index_.logger.alloc()),
+      rust_core_([&] {
+        auto readers = ingest_to_matching_queues.make_readers(shard_num);
+        std::vector<reducer_matching::MatchingEqView> eqs;
+        eqs.reserve(readers.size());
+        for (auto &q : readers) {
+          reducer_matching::MatchingEqView v;
+          v.data = reinterpret_cast<uint8_t *>(q.shared);
+          v.n_elems = q.elem_mask + 1;
+          v.buf_len = q.buf_mask + 1;
+          eqs.push_back(v);
+        }
+        return reducer_matching::matching_core_new(eqs, static_cast<uint32_t>(shard_num));
+      }())
+{}
 
 ebpf_net::matching::weak_refs::logger MatchingCore::logger()
 {
@@ -116,6 +128,22 @@ void MatchingCore::write_internal_stats()
   matching_to_logging_stats_.write_internal_metrics_to_logging_core(core_stats_, time_ns);
 
   dump_internal_state(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::nanoseconds{time_ns}));
+}
+
+void MatchingCore::run()
+{
+  set_self_thread_name(fmt::format("{}_{}", app_name(), shard_num())).on_error([this](auto const &error) {
+    LOG::warn("unable to set name for {} core thread {}: {}", app_name(), shard_num(), error);
+  });
+
+  // Delegate to Rust MatchingCore until stop
+  rust_core_->matching_core_run();
+}
+
+void MatchingCore::stop_async()
+{
+  // Cooperative stop for the Rust core
+  rust_core_->matching_core_stop();
 }
 
 } // namespace reducer::matching
