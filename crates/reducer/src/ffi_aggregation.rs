@@ -1,5 +1,5 @@
 #[cxx::bridge(namespace = "reducer_agg")]
-mod ffi {
+mod ffi_agg {
     // Plain descriptor for contiguous element-queue storage
     #[derive(Debug)]
     pub struct EqView {
@@ -32,7 +32,7 @@ use crate::aggregation_core::AggregationCore;
 
 impl AggregationCore {
     fn from_views(
-        views: &cxx::CxxVector<ffi::EqView>,
+        views: &cxx::CxxVector<ffi_agg::EqView>,
         shard: u32,
         enable_id_id: bool,
         enable_az_id: bool,
@@ -57,7 +57,7 @@ impl AggregationCore {
 }
 
 fn aggregation_core_new(
-    queues: &cxx::CxxVector<ffi::EqView>,
+    queues: &cxx::CxxVector<ffi_agg::EqView>,
     shard: u32,
     enable_id_id: bool,
     enable_az_id: bool,
