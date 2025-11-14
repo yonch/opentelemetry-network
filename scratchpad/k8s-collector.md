@@ -5,42 +5,11 @@ Purpose
 - Only emit pod metadata once the pod and its “effective” owner are known.
 - Maintain a live set of pods, with container details, and handle deletions and resynchronization.
 
-Components
+Existing Components
 - k8s-watcher (Go): connects to the relay via gRPC and streams Kubernetes events.
 - k8s-relay (C++): gRPC server that ingests watcher events, correlates pods with owners, and writes normalized messages to the ingest pipeline. Implements resync machinery.
 
-Rust Port: kube-rs Watcher Adoption
-- Event protocol: adopt `kube::runtime::watcher::Event` end-to-end.
-  - Variants: `Apply(K)`, `Delete(K)`, `Init`, `InitApply(K)`, `InitDone`.
-  - Semantics: `Init` marks a re-list sequence; a stream of `InitApply` follows with all current objects; `InitDone` finalizes the snapshot; thereafter, incremental `Apply`/`Delete` events resume.
-- Auto-recovery: kube-rs watcher reconnects/restarts automatically.
-  - If the watch drops, it restarts from the last seen resourceVersion; if resourceVersion is too old (HTTP 410 Gone), watcher falls back to a fresh list and emits `Init`…`InitDone`.
-  - Remove periodic rotation and bespoke re-list logic; rely on watcher recovery.
-- Stores: use `kube_runtime::reflector::Store` per kind to maintain live sets.
-  - Feed watcher events into the Store; it understands `Init`/`InitApply`/`InitDone` to atomically refresh state.
-  - Keep lightweight, in-process maps for correlation: owners and pods, plus a bounded waiting index for pods missing owner context.
-
-Changes vs. Legacy (Go watcher + C++ relay)
-- Replace custom Added/Modified/Deleted + out-of-band restart with `watcher::Event` protocol (`Init`/`InitApply`/`InitDone`, `Apply`, `Delete`).
-- Remove periodic watcher rotation and manual watch+list restarts; rely on kube-rs auto-recovery and re-list signaling.
-- Replace relay-driven gRPC cancel/reset with local epoch bumps and `pod_resync` to downstream; keep kube watchers running.
-
-Writer Protocol (unified Rust binary)
-- Handshake and compression
-  - On connect, send `version_info(major, minor, patch)` uncompressed and flush.
-  - Immediately enable LZ4 compression for subsequent messages.
-  - Send `connect(client_type=k8s, hostname)`, `report_cpu_cores`, configuration labels, cloud/node metadata, and `metadata_complete(0)`.
-- Data phase
-  - Control: `pod_resync(epoch)` when resynchronizing downstream state.
-  - Data: `pod_new_with_name(...)`, `pod_container(...)`, `pod_delete(...)`, `collector_health(...)` as needed.
-  - Reducer behavior: on `pod_resync`, the reducer clears its k8s pod state for this agent and expects a fresh snapshot. The upstream TCP/TLS connection does not need to be restarted; the collector bumps epoch and resends the live set.
-
-Compatibility Notes (parity with legacy)
-- Container IDs: send `status.containerStatuses[*].containerID` as-is (with runtime prefix); reducer normalizes by stripping `<runtime>://`.
-- Host network: preserve `spec.hostNetwork` and forward as `is_host_network` in `pod_new`.
-- Pod IPs: use `status.podIP` (single IP) for now; `status.podIPs` (dual-stack) remains a documented gap.
-
-Protocol and Data Model
+Existing Protocol and Data Model
 - gRPC service: `Collector.Collect(stream Info) returns (stream Response)`
   - Client (watcher) streams `Info` messages to the server (relay).
   - Server may stream back a single `Response` to signal a controlled reset; after which the server cancels the RPC.
@@ -187,6 +156,37 @@ High-Level Architecture
   - Matching engine that consumes PodMeta and OwnerMeta events and consults Stores to emit metadata events
   - Downstream sink that maps metadata events to render Writer calls
   - Resync behavior integrated with the Pod stream (no central controller)
+
+Rust Port: kube-rs Watcher Adoption
+- Event protocol: adopt `kube::runtime::watcher::Event` end-to-end.
+  - Variants: `Apply(K)`, `Delete(K)`, `Init`, `InitApply(K)`, `InitDone`.
+  - Semantics: `Init` marks a re-list sequence; a stream of `InitApply` follows with all current objects; `InitDone` finalizes the snapshot; thereafter, incremental `Apply`/`Delete` events resume.
+- Auto-recovery: kube-rs watcher reconnects/restarts automatically.
+  - If the watch drops, it restarts from the last seen resourceVersion; if resourceVersion is too old (HTTP 410 Gone), watcher falls back to a fresh list and emits `Init`…`InitDone`.
+  - Remove periodic rotation and bespoke re-list logic; rely on watcher recovery.
+- Stores: use `kube_runtime::reflector::Store` per kind to maintain live sets.
+  - Feed watcher events into the Store; it understands `Init`/`InitApply`/`InitDone` to atomically refresh state.
+  - Keep lightweight, in-process maps for correlation: owners and pods, plus a bounded waiting index for pods missing owner context.
+
+Changes vs. Legacy (Go watcher + C++ relay)
+- Replace custom Added/Modified/Deleted + out-of-band restart with `watcher::Event` protocol (`Init`/`InitApply`/`InitDone`, `Apply`, `Delete`).
+- Remove periodic watcher rotation and manual watch+list restarts; rely on kube-rs auto-recovery and re-list signaling.
+- Replace relay-driven gRPC cancel/reset with local epoch bumps and `pod_resync` to downstream; keep kube watchers running.
+
+Writer Protocol (unified Rust binary)
+- Handshake and compression
+  - On connect, send `version_info(major, minor, patch)` uncompressed and flush.
+  - Immediately enable LZ4 compression for subsequent messages.
+  - Send `connect(client_type=k8s, hostname)`, `report_cpu_cores`, configuration labels, cloud/node metadata, and `metadata_complete(0)`.
+- Data phase
+  - Control: `pod_resync(epoch)` when resynchronizing downstream state.
+  - Data: `pod_new_with_name(...)`, `pod_container(...)`, `pod_delete(...)`, `collector_health(...)` as needed.
+  - Reducer behavior: on `pod_resync`, the reducer clears its k8s pod state for this agent and expects a fresh snapshot. The upstream TCP/TLS connection does not need to be restarted; the collector bumps epoch and resends the live set.
+
+Compatibility Notes (parity with legacy)
+- Container IDs: send `status.containerStatuses[*].containerID` as-is (with runtime prefix); reducer normalizes by stripping `<runtime>://`.
+- Host network: preserve `spec.hostNetwork` and forward as `is_host_network` in `pod_new`.
+- Pod IPs: use `status.podIP` (single IP) for now; `status.podIPs` (dual-stack) remains a documented gap.
 
 Core Data Types
 - PodMeta: { uid, ip, name, ns, version, is_host_network, containers: [{id, name, image}], owner: Option<OwnerRef>, resource_version }
