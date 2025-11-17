@@ -217,7 +217,6 @@ jobs:
       build-libuv,
       build-aws-sdk,
       build-cpp-misc,
-      build-go,
       build-libmaxminddb,
       build-opentelemetry,
       build-libbpf
