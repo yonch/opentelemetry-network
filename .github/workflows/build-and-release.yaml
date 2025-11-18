@@ -60,7 +60,8 @@ on:
         default: false
 
 permissions:
-  contents: read
+  # Allow this workflow (and reusable callers) to create releases
+  contents: write
 
 env:
   BENV_IMAGE: ${{ vars.BENV_IMAGE || 'docker.io/otel/opentelemetry-network-build-tools' }}
