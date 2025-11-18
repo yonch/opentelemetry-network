@@ -218,7 +218,6 @@ jobs:
       build-aws-sdk,
       build-cpp-misc,
       build-libmaxminddb,
-      build-opentelemetry,
       build-libbpf
     ]
     outputs:
