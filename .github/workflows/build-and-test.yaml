@@ -492,6 +492,8 @@ jobs:
         # Prepare output and ccache directories
         mkdir -p "${{ github.workspace }}/out"
         mkdir -p "${{ github.workspace }}/.ccache"
+        # Ensure the build container user (uid 1000) can write here
+        sudo chown -R 1000:1000 "${{ github.workspace }}/out" || true
         chmod -R 777 "${{ github.workspace }}/.ccache" || true
 
         docker pull $BENV_IMAGE
