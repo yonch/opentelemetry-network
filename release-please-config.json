@@ -22,9 +22,7 @@
     ".": {
       "release-type": "simple",
       "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        "VERSION"
-      ]
+      "version-file": "VERSION"
     }
   }
 }
