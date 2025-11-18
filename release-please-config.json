@@ -23,9 +23,11 @@
       "release-type": "simple",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "VERSION"
+        {
+          "type": "plain-text",
+          "path": "VERSION"
+        }
       ]
     }
   }
 }
-
