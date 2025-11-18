@@ -1,0 +1,39 @@
+name: release-please
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: google-github-actions/release-please-action@v4
+        with:
+          command: manifest
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-and-release:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/build-and-release.yaml
+    with:
+      release_type: public
+      # After merging the Release PR, HEAD on main corresponds to the new release.
+      # The reusable workflow computes the tag name from VERSION.
+      ref: main
+      image_prefix: opentelemetry-ebpf-
+      additional_tag: ''
+      dry_run: false
+    secrets: inherit

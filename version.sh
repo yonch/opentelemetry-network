@@ -6,11 +6,25 @@
 set -e
 
 # -----
-# Major and minor versions influence customer vetting processes and level
-# of perceived trust in an implementation -- please discuss before bumping these.
-export EBPF_NET_MAJOR_VERSION='0'
-export EBPF_NET_MINOR_VERSION='11'
-export EBPF_NET_PATCH_VERSION='0'
+# Version: read from VERSION file when available, otherwise fall back
+VERSION_FILE="$(dirname "$0")/VERSION"
+
+if [ -f "$VERSION_FILE" ]; then
+  EBPF_NET_VERSION="$(tr -d '\n' < "$VERSION_FILE")"
+
+  EBPF_NET_MAJOR_VERSION="$(printf '%s' "$EBPF_NET_VERSION" | cut -d. -f1)"
+  EBPF_NET_MINOR_VERSION="$(printf '%s' "$EBPF_NET_VERSION" | cut -d. -f2)"
+  EBPF_NET_PATCH_VERSION="$(printf '%s' "$EBPF_NET_VERSION" | cut -d. -f3)"
+
+  export EBPF_NET_MAJOR_VERSION EBPF_NET_MINOR_VERSION EBPF_NET_PATCH_VERSION
+else
+  # -----
+  # Major and minor versions influence customer vetting processes and level
+  # of perceived trust in an implementation -- please discuss before bumping these.
+  export EBPF_NET_MAJOR_VERSION='0'
+  export EBPF_NET_MINOR_VERSION='11'
+  export EBPF_NET_PATCH_VERSION='0'
+fi
 
 # -----
 # Build number is incremented automatically, so we can release directly from
